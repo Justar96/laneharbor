@@ -1,0 +1,21 @@
+{
+  "app": "sangthian-client",
+  "channels": ["stable"],
+  "releases": [
+    {
+      "version": "0.1.0",
+      "channel": "stable",
+      "pub_date": "2024-08-27T12:00:00Z",
+      "notes": "Initial release",
+      "assets": [
+        {
+          "platform": "windows-x86_64",
+          "filename": "Sangthian-Client-0.1.0-x64-setup.exe",
+          "sha256": "dummy-sha256",
+          "size": 12345678,
+          "signature": "FAKE_SIGNATURE_FOR_TESTING"
+        }
+      ]
+    }
+  ]
+}
