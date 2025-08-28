@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LaneHarbor</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>LaneHarbor</h1>
+      <p class="subtitle">Simple app release index and downloads</p>
+    </header>
+
+    <main class="container">
+      <section class="controls">
+        <label for="appsSelect">App:</label>
+        <select id="appsSelect"></select>
+        <button id="reloadApps" type="button">Reload</button>
+        <span id="status" class="status"></span>
+      </section>
+
+      <section id="appInfo" class="panel hidden"></section>
+
+      <section id="releasesSection" class="panel hidden">
+        <h2>Releases</h2>
+        <div id="releases"></div>
+      </section>
+    </main>
+
+    <footer>
+      <a href="/healthz" target="_blank">/healthz</a>
+      <span>·</span>
+      <a href="/v1/apps" target="_blank">/v1/apps</a>
+    </footer>
+
+    <script src="/assets/app.js" type="module"></script>
+  </body>
+</html>

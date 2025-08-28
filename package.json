@@ -5,13 +5,35 @@
   "type": "module",
   "scripts": {
     "dev": "bun --watch src/app.ts",
-    "start": "bun run src/app.ts"
+    "dev:remix": "remix vite:dev",
+    "build": "remix vite:build",
+    "start": "bun run src/app.ts",
+    "typecheck": "tsc"
   },
   "dependencies": {
+    "@remix-run/dev": "^2.17.0",
+    "@remix-run/node": "^2.17.0",
+    "@remix-run/react": "^2.17.0",
+    "@remix-run/server-runtime": "^2.17.0",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.0.0",
+    "framer-motion": "^10.16.0",
     "hono": "^4.0.0",
-    "semver": "^7.6.3"
+    "lucide-react": "^0.294.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remix-hono": "^0.0.18",
+    "semver": "^7.6.3",
+    "tailwind-merge": "^2.0.0",
+    "@radix-ui/react-progress": "^1.0.3",
+    "tailwindcss": "^3.4.0",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.31",
+    "vite": "^5.4.0"
   },
   "devDependencies": {
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
     "@types/node": "^20.11.0",
     "@types/bun": "^1.1.6",
     "@types/semver": "^7.5.8",
