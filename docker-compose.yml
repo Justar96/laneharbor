@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  # Storage Service (gRPC)
+  storage:
+    build:
+      context: ./packages/storage
+      dockerfile: Dockerfile
+    ports:
+      - "50051:50051"
+    environment:
+      - STORAGE_GRPC_HOST=0.0.0.0
+      - STORAGE_GRPC_PORT=50051
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME:-laneharbor-storage}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      # For local development with LocalStack
+      - AWS_ENDPOINT=${AWS_ENDPOINT:-http://localstack:4566}
+    depends_on:
+      - localstack
+    networks:
+      - laneharbor-network
+    volumes:
+      - ./packages/storage:/app
+      - /app/node_modules
+
+  # Backend API Service (REST + WebSocket)
+  backend:
+    build:
+      context: ./packages/backend
+      dockerfile: Dockerfile
+    ports:
+      - "8787:8787"
+    environment:
+      - PORT=8787
+      - LH_ENABLE_API=true
+      - LH_FRONTEND_ORIGIN=http://localhost:5173
+      - STORAGE_SERVICE_HOST=storage
+      - STORAGE_SERVICE_PORT=50051
+      - LH_BASE_URL=http://localhost:8787
+    depends_on:
+      - storage
+    networks:
+      - laneharbor-network
+    volumes:
+      - ./packages/backend:/app
+      - /app/node_modules
+      - ./storage:/app/storage
+
+  # Frontend Service (Remix)
+  frontend:
+    build:
+      context: ./packages/frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      - PORT=5173
+      - API_BASE_URL=http://backend:8787
+      - WS_URL=ws://localhost:8787/ws
+      - NODE_ENV=development
+    depends_on:
+      - backend
+    networks:
+      - laneharbor-network
+    volumes:
+      - ./packages/frontend:/app
+      - /app/node_modules
+
+  # LocalStack for S3 emulation (development only)
+  localstack:
+    image: localstack/localstack:latest
+    ports:
+      - "4566:4566"
+      - "4571:4571"
+    environment:
+      - SERVICES=s3
+      - DEBUG=1
+      - DATA_DIR=/tmp/localstack/data
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - ./tmp/localstack:/tmp/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - laneharbor-network
+
+networks:
+  laneharbor-network:
+    driver: bridge
+
+volumes:
+  localstack-data:

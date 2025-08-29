@@ -7,6 +7,9 @@ import { env } from './config.js'
 import { registerRoutes } from './routes.js'
 import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
+import { createServer } from 'node:http'
+import { WebSocketService } from './services/websocket.service.js'
+import { StorageClient } from './clients/storage.client.js'
 
 const app = new Hono()
 
@@ -139,11 +142,44 @@ app.get('*', (c: Context) => {
 
 const port = Number(process.env.PORT || env.PORT || 8787)
 
-// Start the Node.js server
-serve({
+// Initialize storage client (connects to storage service via gRPC)
+const storageHost = process.env.STORAGE_SERVICE_HOST || 'localhost'
+const storagePort = process.env.STORAGE_SERVICE_PORT || '50051'
+const storageClient = new StorageClient(storageHost, storagePort)
+
+// Create HTTP server for both Hono and WebSocket
+const server = serve({
   fetch: app.fetch,
   port,
-  hostname: '0.0.0.0'
+  hostname: '0.0.0.0',
+  createServer
 })
 
-console.log(`LaneHarbor Backend API listening on http://0.0.0.0:${port}`)
+// Initialize WebSocket service
+const wsService = new WebSocketService(server, storageClient)
+
+// Make services available globally in app context
+app.use('*', async (c, next) => {
+  c.set('storageClient', storageClient)
+  c.set('wsService', wsService)
+  await next()
+})
+
+console.log(`🚀 LaneHarbor Backend API listening on http://0.0.0.0:${port}`)
+console.log(`🔌 WebSocket service available at ws://0.0.0.0:${port}/ws`)
+console.log(`📦 Connected to Storage Service at ${storageHost}:${storagePort}`)
+
+// Graceful shutdown
+process.on('SIGINT', () => {
+  console.log('\nShutting down services...')
+  wsService.shutdown()
+  storageClient.close()
+  process.exit(0)
+})
+
+process.on('SIGTERM', () => {
+  console.log('\nShutting down services...')
+  wsService.shutdown()
+  storageClient.close()
+  process.exit(0)
+})

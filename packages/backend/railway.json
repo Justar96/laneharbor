@@ -22,6 +22,12 @@
     "LH_DATA_DIR": "./storage",
     "LH_DEFAULT_CHANNEL": "stable",
     "LH_FRONTEND_ORIGIN": "https://laneharbor.justarr.com",
-    "LH_BASE_URL": "https://api.justarr.com"
+    "API_BASE_URL": "https://api.justarr.com",
+    "STORAGE_SERVICE_HOST": {
+      "$ref": "Storage.RAILWAY_PRIVATE_DOMAIN"
+    },
+    "STORAGE_SERVICE_PORT": {
+      "$ref": "Storage.PORT"
+    }
   }
 }

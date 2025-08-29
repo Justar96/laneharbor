@@ -1,0 +1,173 @@
+syntax = "proto3";
+
+package storage;
+
+// Storage service for handling file operations
+service StorageService {
+  // Upload operations
+  rpc InitiateUpload(InitiateUploadRequest) returns (InitiateUploadResponse);
+  rpc UploadChunk(stream UploadChunkRequest) returns (UploadResponse);
+  rpc CompleteUpload(CompleteUploadRequest) returns (CompleteUploadResponse);
+  
+  // Download operations
+  rpc InitiateDownload(DownloadRequest) returns (stream DownloadChunkResponse);
+  rpc GetDownloadUrl(GetDownloadUrlRequest) returns (GetDownloadUrlResponse);
+  
+  // File management
+  rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
+  rpc DeleteFile(DeleteFileRequest) returns (DeleteFileResponse);
+  rpc GetFileMetadata(GetFileMetadataRequest) returns (FileMetadata);
+  
+  // Progress tracking
+  rpc GetUploadProgress(GetProgressRequest) returns (stream ProgressUpdate);
+  rpc GetDownloadProgress(GetProgressRequest) returns (stream ProgressUpdate);
+}
+
+// Common messages
+message FileMetadata {
+  string id = 1;
+  string filename = 2;
+  string app_name = 3;
+  string version = 4;
+  string platform = 5;
+  int64 size = 6;
+  string sha256 = 7;
+  string content_type = 8;
+  string created_at = 9;
+  string updated_at = 10;
+  map<string, string> metadata = 11;
+}
+
+message ProgressUpdate {
+  string operation_id = 1;
+  string status = 2; // "pending", "in_progress", "completed", "failed"
+  double progress = 3; // 0.0 to 100.0
+  int64 bytes_processed = 4;
+  int64 bytes_total = 5;
+  string message = 6;
+  string error = 7;
+  int64 speed_bps = 8; // bytes per second
+  int64 eta_seconds = 9;
+}
+
+// Upload messages
+message InitiateUploadRequest {
+  string filename = 1;
+  string app_name = 2;
+  string version = 3;
+  string platform = 4;
+  int64 file_size = 5;
+  string content_type = 6;
+  string sha256 = 7;
+  map<string, string> metadata = 8;
+}
+
+message InitiateUploadResponse {
+  string upload_id = 1;
+  string upload_url = 2; // Pre-signed URL for direct upload if supported
+  int32 chunk_size = 3; // Recommended chunk size
+  int32 total_chunks = 4;
+  bool use_multipart = 5;
+  map<string, string> headers = 6; // Required headers for upload
+}
+
+message UploadChunkRequest {
+  string upload_id = 1;
+  int32 chunk_number = 2;
+  bytes data = 3;
+  string checksum = 4;
+  bool is_final = 5;
+}
+
+message UploadResponse {
+  string upload_id = 1;
+  int32 chunks_received = 2;
+  int64 bytes_received = 3;
+  bool completed = 4;
+  string message = 5;
+}
+
+message CompleteUploadRequest {
+  string upload_id = 1;
+  repeated string chunk_etags = 2; // For S3 multipart
+  string final_sha256 = 3;
+}
+
+message CompleteUploadResponse {
+  string file_id = 1;
+  string download_url = 2;
+  FileMetadata metadata = 3;
+}
+
+// Download messages
+message DownloadRequest {
+  string file_id = 1;
+  string app_name = 2;
+  string version = 3;
+  string platform = 4;
+  int64 start_byte = 5; // For range requests
+  int64 end_byte = 6;
+  bool stream = 7;
+}
+
+message DownloadChunkResponse {
+  bytes data = 1;
+  int32 chunk_number = 2;
+  int64 total_chunks = 3;
+  int64 total_size = 4;
+  bool is_final = 5;
+  string checksum = 6;
+}
+
+message GetDownloadUrlRequest {
+  string file_id = 1;
+  string app_name = 2;
+  string version = 3;
+  string platform = 4;
+  int32 expires_in_seconds = 5;
+}
+
+message GetDownloadUrlResponse {
+  string download_url = 1;
+  string expires_at = 2;
+  map<string, string> headers = 3;
+}
+
+// File management messages
+message ListFilesRequest {
+  string app_name = 1;
+  string version = 2;
+  string platform = 3;
+  string prefix = 4;
+  int32 max_results = 5;
+  string next_token = 6;
+}
+
+message ListFilesResponse {
+  repeated FileMetadata files = 1;
+  string next_token = 2;
+  int32 total_count = 3;
+}
+
+message DeleteFileRequest {
+  string file_id = 1;
+  string app_name = 2;
+  string version = 3;
+  string platform = 4;
+}
+
+message DeleteFileResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message GetFileMetadataRequest {
+  string file_id = 1;
+  string app_name = 2;
+  string version = 3;
+  string platform = 4;
+}
+
+message GetProgressRequest {
+  string operation_id = 1;
+}
