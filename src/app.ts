@@ -15,7 +15,7 @@ app.use('*', timeout(30000))
 
 // CORS middleware with secure defaults
 app.use('*', cors({
-  origin: env.LH_BASE_URL ? [env.LH_BASE_URL] : ['http://localhost:3000'],
+  origin: '*', // Allow all origins for Railway deployment
   allowMethods: ['GET', 'POST', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization', 'Range', 'If-None-Match', 'If-Modified-Since'],
   exposeHeaders: ['Content-Range', 'Accept-Ranges', 'Content-Length', 'X-File-SHA256'],
@@ -29,22 +29,26 @@ app.use('*', logger((message, ...rest) => {
 
 // Request validation middleware
 app.use('*', async (c, next) => {
-  // Basic security headers
+  // Basic security headers (Railway-compatible)
   c.header('X-Content-Type-Options', 'nosniff')
-  c.header('X-Frame-Options', 'DENY')
   c.header('X-XSS-Protection', '1; mode=block')
   c.header('Referrer-Policy', 'strict-origin-when-cross-origin')
+  
+  // Handle Railway's proxy headers
+  const forwardedProto = c.req.header('x-forwarded-proto')
+  const forwardedHost = c.req.header('x-forwarded-host')
+  
+  // Prevent redirect loops on Railway
+  if (forwardedProto === 'https' && forwardedHost) {
+    c.header('X-Forwarded-Proto', 'https')
+    c.header('X-Forwarded-Host', forwardedHost)
+  }
   
   // Rate limiting (basic implementation)
   const ip = c.req.header('x-forwarded-for') || 
             c.req.header('x-real-ip') || 
             'unknown'
   
-  // Simple rate limiting: 1000 requests per hour per IP
-  const rateKey = `rate_${ip}_${Math.floor(Date.now() / 3600000)}`
-  
-  // In a production environment, you'd use Redis or similar
-  // For now, we'll just set a header for monitoring
   c.header('X-Rate-Limit-IP', ip)
   
   await next()
@@ -157,6 +161,7 @@ const port = Number(process.env.PORT || env.PORT || 3000)
 
 const server = Bun.serve({
   port,
+  hostname: '0.0.0.0',
   fetch: app.fetch,
 })
 
