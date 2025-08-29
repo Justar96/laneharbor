@@ -2,9 +2,9 @@
 export function getApiBaseUrl(): string {
   // Server-side: use environment variable
   if (typeof window === 'undefined') {
-    return process.env.API_BASE_URL || 'http://localhost:8787';
+    return process.env.API_BASE_URL || 'https://api.justarr.com';
   }
   
   // Client-side: use window location for relative URLs or env var
-  return (window as any).__API_BASE_URL__ || 'http://localhost:8787';
+  return (window as any).__API_BASE_URL__ || 'https://api.justarr.com';
 }
