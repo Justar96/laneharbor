@@ -198,9 +198,8 @@ export function registerRoutes(app: Hono) {
       const filePath = join(getAppDir(appName), version, asset.filename)
       
       // Verify file exists and is readable
-      const f = Bun.file(filePath)
-      const exists = await f.exists()
-      if (!exists) {
+      const { existsSync, statSync } = await import('node:fs')
+      if (!existsSync(filePath)) {
         console.error(`File not found: ${filePath}`)
         return c.json({ 
           error: 'file_not_found', 
@@ -209,7 +208,8 @@ export function registerRoutes(app: Hono) {
         }, 404)
       }
 
-      const size = f.size
+      const stats = statSync(filePath)
+      const size = stats.size
       const range = c.req.header('range') || c.req.header('Range')
       
       // Set security and caching headers
@@ -307,7 +307,10 @@ export function registerRoutes(app: Hono) {
             console.error('Failed to log download metric:', err)
           )
 
-          const chunk = f.slice(start, end + 1)
+          // For now, return full file for range requests (TODO: implement proper range support)
+          const { readFileSync } = await import('node:fs')
+          const fileBuffer = readFileSync(filePath)
+          const chunk = fileBuffer.subarray(start, end + 1)
           return new Response(chunk, {
             status: 206,
             headers: {
@@ -338,8 +341,10 @@ export function registerRoutes(app: Hono) {
           console.error('Failed to log download metric:', err)
         )
 
-        // Stream the file with proper headers
-        return new Response(f, {
+        // Read file and stream with proper headers
+        const { readFileSync } = await import('node:fs')
+        const fileBuffer = readFileSync(filePath)
+        return new Response(fileBuffer, {
           status: 200,
           headers: {
             'Content-Type': 'application/octet-stream',
@@ -1115,12 +1120,13 @@ export function registerRoutes(app: Hono) {
       // Ensure app directory exists
       const appDir = getAppDir(session.appName)
       const versionDir = join(appDir, session.version)
-      await Bun.write(join(versionDir, 'temp'), '') // Create directory
+      const { mkdirSync, writeFileSync } = await import('node:fs')
+      mkdirSync(versionDir, { recursive: true })
       
       // Save uploaded file
       const filePath = join(versionDir, file.name)
       const buffer = await file.arrayBuffer()
-      await Bun.write(filePath, buffer)
+      writeFileSync(filePath, new Uint8Array(buffer))
       
       // Update session progress
       await updateUploadSession(sessionId, {
@@ -1235,9 +1241,8 @@ export function registerRoutes(app: Hono) {
       const filePath = join(getAppDir(appName), version, filename)
       
       // Check if file exists
-      const file = Bun.file(filePath)
-      const exists = await file.exists()
-      if (!exists) {
+      const { existsSync } = await import('node:fs')
+      if (!existsSync(filePath)) {
         return c.json({ error: 'file_not_found' }, 404)
       }
       
@@ -1287,10 +1292,9 @@ export function registerRoutes(app: Hono) {
       for (const asset of release.assets) {
         try {
           const filePath = join(getAppDir(appName), version, asset.filename)
-          const file = Bun.file(filePath)
-          const exists = await file.exists()
+          const { existsSync } = await import('node:fs')
           
-          if (exists) {
+          if (existsSync(filePath)) {
             const analysis = await analyzePackage(filePath, asset.filename)
             await savePackageAnalysis(appName, version, asset.filename, analysis)
             analysisResults.push({
