@@ -6,16 +6,16 @@ WORKDIR /app
 COPY package.json ./
 
 # Install dependencies
-RUN npm install --production
+RUN npm install
 
 # Copy source code
 COPY . .
 
-# Build TypeScript
+# Build the app
 RUN npm run build
 
-# Expose gRPC port
-EXPOSE 50051
+# Expose frontend port
+EXPOSE 3000
 
 # Start the service
 CMD ["npm", "start"]

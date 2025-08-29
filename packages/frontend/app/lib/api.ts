@@ -197,28 +197,38 @@ export class LaneHarborAPI {
   }
 }
 
-// gRPC-like real-time connector (WebSocket-based for web compatibility)
+// WebSocket client for real-time updates from backend
 export class LaneHarborRealtimeConnector {
   private ws: WebSocket | null = null;
-  private baseUrl: string;
+  private wsUrl: string;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
+  private eventHandlers: Map<string, (data: any) => void> = new Map();
 
   constructor(baseUrl: string) {
     // Convert HTTP URL to WebSocket URL
-    this.baseUrl = baseUrl.replace(/^http/, 'ws') + '/ws';
+    this.wsUrl = baseUrl.replace(/^http/, 'ws') + '/ws';
   }
 
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        this.ws = new WebSocket(this.baseUrl);
+        this.ws = new WebSocket(this.wsUrl);
         
         this.ws.onopen = () => {
-          console.log('WebSocket connected');
+          console.log('WebSocket connected to backend');
           this.reconnectAttempts = 0;
           resolve();
+        };
+
+        this.ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            this.handleMessage(data);
+          } catch (error) {
+            console.error('Failed to parse WebSocket message:', error);
+          }
         };
 
         this.ws.onerror = (error) => {
@@ -226,8 +236,8 @@ export class LaneHarborRealtimeConnector {
           reject(error);
         };
 
-        this.ws.onclose = () => {
-          console.log('WebSocket disconnected');
+        this.ws.onclose = (event) => {
+          console.log('WebSocket disconnected:', event.code, event.reason);
           this.attemptReconnect();
         };
 
@@ -248,51 +258,52 @@ export class LaneHarborRealtimeConnector {
     }
   }
 
-  subscribeToDownloadProgress(downloadId: string, callback: (progress: any) => void) {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      console.warn('WebSocket not connected');
-      return;
+  private handleMessage(data: any) {
+    const handler = this.eventHandlers.get(data.type);
+    if (handler) {
+      handler(data);
     }
-
-    this.ws.send(JSON.stringify({
-      type: 'subscribe',
-      topic: 'download_progress',
-      downloadId
-    }));
-
-    this.ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'download_progress' && data.downloadId === downloadId) {
-          callback(data.progress);
-        }
-      } catch (error) {
-        console.error('Failed to parse WebSocket message:', error);
-      }
-    };
   }
 
-  subscribeToSystemStatus(callback: (status: any) => void) {
+  subscribeToProgress(sessionId: string, callback: (data: any) => void) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      console.warn('WebSocket not connected');
+      return;
+    }
+
+    // Subscribe to progress updates for a specific session
+    this.ws.send(JSON.stringify({
+      type: 'subscribe',
+      sessionId
+    }));
+
+    // Store callback for progress events
+    this.eventHandlers.set('progress', callback);
+    this.eventHandlers.set('complete', callback);
+    this.eventHandlers.set('error', callback);
+  }
+
+  unsubscribeFromProgress(sessionId: string) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       console.warn('WebSocket not connected');
       return;
     }
 
     this.ws.send(JSON.stringify({
-      type: 'subscribe',
-      topic: 'system_status'
+      type: 'unsubscribe',
+      sessionId
     }));
 
-    this.ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'system_status') {
-          callback(data.status);
-        }
-      } catch (error) {
-        console.error('Failed to parse WebSocket message:', error);
-      }
-    };
+    // Remove progress event handlers
+    this.eventHandlers.delete('progress');
+    this.eventHandlers.delete('complete');
+    this.eventHandlers.delete('error');
+  }
+
+  ping() {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'ping' }));
+    }
   }
 
   disconnect() {

@@ -8,7 +8,7 @@ import { registerRoutes } from './routes.js'
 import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { createServer } from 'node:http'
-import { WebSocketService } from './services/websocket.service.js'
+import { WebSocketService } from './websocket.js'
 import { StorageClient } from './clients/storage.client.js'
 
 const app = new Hono()
@@ -148,20 +148,23 @@ const storagePort = process.env.STORAGE_SERVICE_PORT || '50051'
 const storageClient = new StorageClient(storageHost, storagePort)
 
 // Create HTTP server for both Hono and WebSocket
+const httpServer = createServer()
+
 const server = serve({
   fetch: app.fetch,
   port,
   hostname: '0.0.0.0',
-  createServer
+  createServer: () => httpServer
 })
 
-// Initialize WebSocket service
-const wsService = new WebSocketService(server, storageClient)
+// Initialize WebSocket service with the HTTP server instance
+const wsService = new WebSocketService(httpServer, storageClient)
 
 // Make services available globally in app context
 app.use('*', async (c, next) => {
-  c.set('storageClient', storageClient)
-  c.set('wsService', wsService)
+  // Store services on context for route handlers  
+  (c as any).storageClient = storageClient;
+  (c as any).wsService = wsService;
   await next()
 })
 

@@ -45,8 +45,19 @@ export const meta: MetaFunction = () => {
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
-  // Use LH_BASE_URL for API calls if available, otherwise use current host
-  const apiBaseUrl = process.env.LH_BASE_URL || `${url.protocol}//${url.host}`;
+  
+  // Determine backend URL - prioritize environment variables, fallback to localhost for development
+  let apiBaseUrl: string;
+  if (process.env.LH_BACKEND_URL) {
+    apiBaseUrl = process.env.LH_BACKEND_URL;
+  } else if (process.env.NODE_ENV === 'development') {
+    // In development, assume backend runs on port 8787
+    apiBaseUrl = 'http://localhost:8787';
+  } else {
+    // In production, try to use the same host as frontend but different port or path
+    const backendPort = process.env.LH_BACKEND_PORT || '8787';
+    apiBaseUrl = `${url.protocol}//${url.hostname}:${backendPort}`;
+  }
   
   // Extract URL parameters for configuration
   const searchParams = url.searchParams;
@@ -62,11 +73,30 @@ export async function loader({ request }: LoaderFunctionArgs) {
   };
   
   try {
-    const response = await fetch(`${apiBaseUrl}/v1/apps`);
+    // Add timeout and proper error handling to prevent redirect loops
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    
+    const response = await fetch(`${apiBaseUrl}/v1/apps`, {
+      signal: controller.signal,
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'LaneHarbor-Frontend/1.0'
+      }
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
     const data = await response.json();
     return json({ apps: data.apps || [], baseUrl: apiBaseUrl, urlConfig, error: null });
   } catch (error) {
-    return json({ apps: [], baseUrl: apiBaseUrl, urlConfig, error: "Failed to fetch apps" });
+    console.error('Failed to fetch apps from backend:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to fetch apps';
+    return json({ apps: [], baseUrl: apiBaseUrl, urlConfig, error: errorMessage });
   }
 }
 

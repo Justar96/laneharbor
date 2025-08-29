@@ -1,44 +1,51 @@
 version: '3.8'
 
 services:
-  # Storage Service (gRPC)
+  # Storage Service - gRPC microservice for file operations
   storage:
     build:
       context: ./packages/storage
       dockerfile: Dockerfile
+    container_name: laneharbor-storage
     ports:
       - "50051:50051"
     environment:
-      - STORAGE_GRPC_HOST=0.0.0.0
-      - STORAGE_GRPC_PORT=50051
-      - AWS_REGION=${AWS_REGION:-us-east-1}
-      - S3_BUCKET_NAME=${S3_BUCKET_NAME:-laneharbor-storage}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      # For local development with LocalStack
-      - AWS_ENDPOINT=${AWS_ENDPOINT:-http://localstack:4566}
+      - NODE_ENV=development
+      - GRPC_PORT=50051
+      # AWS S3 Configuration (use MinIO for local development)
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - AWS_REGION=us-east-1
+      - S3_BUCKET_NAME=laneharbor-storage
+      - S3_ENDPOINT=http://minio:9000
+      - S3_FORCE_PATH_STYLE=true
     depends_on:
-      - localstack
+      - minio
     networks:
       - laneharbor-network
     volumes:
       - ./packages/storage:/app
       - /app/node_modules
+    command: ["npm", "run", "dev"]
 
-  # Backend API Service (REST + WebSocket)
+  # Backend Service - REST API and WebSocket server
   backend:
     build:
       context: ./packages/backend
       dockerfile: Dockerfile
+    container_name: laneharbor-backend
     ports:
       - "8787:8787"
     environment:
+      - NODE_ENV=development
       - PORT=8787
       - LH_ENABLE_API=true
-      - LH_FRONTEND_ORIGIN=http://localhost:5173
+      - LH_DATA_DIR=/app/storage
+      - LH_DEFAULT_CHANNEL=stable
+      - LH_FRONTEND_ORIGIN=http://localhost:3000
+      # Storage service connection
       - STORAGE_SERVICE_HOST=storage
       - STORAGE_SERVICE_PORT=50051
-      - LH_BASE_URL=http://localhost:8787
     depends_on:
       - storage
     networks:
@@ -46,20 +53,21 @@ services:
     volumes:
       - ./packages/backend:/app
       - /app/node_modules
-      - ./storage:/app/storage
+      - storage-data:/app/storage
+    command: ["npm", "run", "dev"]
 
-  # Frontend Service (Remix)
+  # Frontend Service - Remix app
   frontend:
     build:
       context: ./packages/frontend
       dockerfile: Dockerfile
+    container_name: laneharbor-frontend
     ports:
-      - "5173:5173"
+      - "3000:3000"
     environment:
-      - PORT=5173
-      - API_BASE_URL=http://backend:8787
-      - WS_URL=ws://localhost:8787/ws
       - NODE_ENV=development
+      - LH_BACKEND_URL=http://backend:8787
+      - LH_BACKEND_PORT=8787
     depends_on:
       - backend
     networks:
@@ -67,27 +75,52 @@ services:
     volumes:
       - ./packages/frontend:/app
       - /app/node_modules
+      - /app/build
+    command: ["npm", "run", "dev"]
 
-  # LocalStack for S3 emulation (development only)
-  localstack:
-    image: localstack/localstack:latest
+  # MinIO - S3-compatible storage for local development
+  minio:
+    image: minio/minio:latest
+    container_name: laneharbor-minio
     ports:
-      - "4566:4566"
-      - "4571:4571"
+      - "9000:9000"
+      - "9001:9001"
     environment:
-      - SERVICES=s3
-      - DEBUG=1
-      - DATA_DIR=/tmp/localstack/data
-      - DOCKER_HOST=unix:///var/run/docker.sock
-    volumes:
-      - ./tmp/localstack:/tmp/localstack
-      - /var/run/docker.sock:/var/run/docker.sock
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
     networks:
       - laneharbor-network
+    volumes:
+      - minio-data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # MinIO Client - Initialize bucket
+  minio-init:
+    image: minio/mc:latest
+    container_name: laneharbor-minio-init
+    depends_on:
+      - minio
+    networks:
+      - laneharbor-network
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc config host add minio http://minio:9000 minioadmin minioadmin) do echo '...waiting...' && sleep 1; done;
+      /usr/bin/mc mb minio/laneharbor-storage;
+      /usr/bin/mc policy set public minio/laneharbor-storage;
+      exit 0;
+      "
+
+volumes:
+  storage-data:
+    driver: local
+  minio-data:
+    driver: local
 
 networks:
   laneharbor-network:
     driver: bridge
-
-volumes:
-  localstack-data:

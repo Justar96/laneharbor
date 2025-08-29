@@ -339,3 +339,22 @@ export interface UploadSession {
     estimatedProcessingTime: number
   }
 }
+
+// === PROGRESS TRACKING ===
+export interface UploadProgress {
+  sessionId: string
+  percent: number
+  transferred: number
+  total: number
+  speed?: number // bytes per second
+  eta?: number // seconds remaining
+}
+
+export interface DownloadProgress {
+  sessionId: string
+  percent: number
+  transferred: number
+  total: number
+  speed?: number // bytes per second
+  eta?: number // seconds remaining
+}

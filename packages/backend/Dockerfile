@@ -14,8 +14,8 @@ COPY . .
 # Build TypeScript
 RUN npm run build
 
-# Expose gRPC port
-EXPOSE 50051
+# Expose backend port
+EXPOSE 8787
 
 # Start the service
 CMD ["npm", "start"]

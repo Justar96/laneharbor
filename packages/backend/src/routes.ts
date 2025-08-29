@@ -3,7 +3,7 @@ import type { Context } from 'hono'
 import { getAppsList, readAppIndex, pickLatestRelease, findReleaseByVersion, getAppDir, logDownloadMetric, getAppInsights, getGlobalAnalytics, shouldUserGetRelease, createUploadSession, updateUploadSession, getUploadSession, analyzePackage, savePackageAnalysis, getPackageAnalysis } from './storage.js'
 import type { DownloadMetric, UploadSession, PackageAnalysisResult } from './types.js'
 import { join } from 'node:path'
-import semver from 'semver'
+import * as semver from 'semver'
 import { env } from './config.js'
 
 export function registerRoutes(app: Hono) {

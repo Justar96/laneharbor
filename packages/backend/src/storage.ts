@@ -2,7 +2,7 @@ import { readdir, readFile, writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { env } from './config.js'
 import type { AppIndex, ReleaseEntry, DownloadMetric, AppInsights, GlobalAnalytics, SecurityCheck, ReleaseProvenance, RolloutConfig, DeploymentMetrics, PackageAnalysisResult, PackageMetadata, PackageStructure, DependencyAnalysis, ComplianceCheck, UploadSession } from './types.js'
-import semver from 'semver'
+import * as semver from 'semver'
 
 export function getDataDir() {
   // Default to local ./storage for dev if LH_DATA_DIR is not set
@@ -369,8 +369,7 @@ export async function validateReleaseAsset(asset: { filename: string; platform: 
   const assetPath = join(getAppDir(appName), version, asset.filename)
   
   try {
-    const file = Bun.file(assetPath)
-    const buffer = await file.arrayBuffer()
+    const buffer = await readFile(assetPath)
     
     // Generate SHA-256 hash
     const hashBuffer = await crypto.subtle.digest('SHA-256', buffer)
@@ -526,9 +525,8 @@ async function ensureAnalysisDir(appName: string, version: string) {
 
 export async function extractPackageMetadata(filePath: string, filename: string): Promise<PackageMetadata> {
   try {
-    const file = Bun.file(filePath)
-    const stats = await file.size
-    const buffer = await file.arrayBuffer()
+    const buffer = await readFile(filePath)
+    const stats = buffer.byteLength
     
     // Basic file analysis
     const isExecutable = isExecutableFile(filename)
@@ -608,10 +606,10 @@ function detectMimeType(filename: string): string {
   return mimeTypes[ext || ''] || 'application/octet-stream'
 }
 
-async function extractExecutableInfo(buffer: ArrayBuffer, filename: string): Promise<any> {
+async function extractExecutableInfo(buffer: Buffer, filename: string): Promise<any> {
   // TODO: Implement actual executable parsing
   // This would use libraries to parse PE, ELF, Mach-O formats
-  const bytes = new Uint8Array(buffer.slice(0, 1024))
+  const bytes = new Uint8Array(buffer.subarray(0, 1024))
   
   return {
     // Placeholder - would extract real metadata
@@ -644,8 +642,7 @@ function detectArchitecture(bytes: Uint8Array): string {
 
 export async function analyzePackageStructure(filePath: string, filename: string): Promise<PackageStructure> {
   try {
-    const file = Bun.file(filePath)
-    const buffer = await file.arrayBuffer()
+    const buffer = await readFile(filePath)
     
     const structure: PackageStructure = {
       totalFiles: 1,
