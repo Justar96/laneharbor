@@ -153,3 +153,189 @@ export interface DistributionMetrics {
   optimizationSuggestions?: string[]
   predictedPerformance?: number
 }
+
+// === PACKAGE ANALYSIS & UPLOAD ===
+export interface PackageUploadRequest {
+  appName: string
+  version: string
+  channel: string
+  platform: Platform | string
+  file: File | Blob
+  notes?: string
+  // Optional metadata override
+  metadata?: Partial<PackageMetadata>
+}
+
+export interface PackageMetadata {
+  filename: string
+  size: number
+  mimeType: string
+  uploadTimestamp: Date
+  uploader?: string
+  // File characteristics
+  isExecutable: boolean
+  isArchive: boolean
+  isInstaller: boolean
+  // Extracted metadata
+  extractedInfo: {
+    productName?: string
+    version?: string
+    description?: string
+    company?: string
+    copyright?: string
+    buildDate?: Date
+    architecture?: string
+  }
+  // TODO: AI-extracted insights
+  aiAnalysis?: {
+    contentType: string
+    suspiciousPatterns: string[]
+    qualityScore: number
+    similarPackages: string[]
+  }
+}
+
+export interface PackageAnalysisResult {
+  metadata: PackageMetadata
+  security: SecurityCheck
+  structure: PackageStructure
+  dependencies: DependencyAnalysis
+  compliance: ComplianceCheck
+  // TODO: AI-powered insights
+  aiInsights?: {
+    riskAssessment: 'low' | 'medium' | 'high'
+    recommendedActions: string[]
+    similarityAnalysis: {
+      matchingPackages: string[]
+      anomalies: string[]
+    }
+    qualityMetrics: {
+      codeQuality: number
+      securityScore: number
+      performanceScore: number
+    }
+  }
+}
+
+export interface PackageStructure {
+  totalFiles: number
+  directories: string[]
+  executableFiles: string[]
+  configFiles: string[]
+  dataFiles: string[]
+  // Archive analysis (for .zip, .tar.gz, etc.)
+  archiveInfo?: {
+    compressionRatio: number
+    originalSize: number
+    compressedSize: number
+    entries: ArchiveEntry[]
+  }
+  // Executable analysis (for .exe, .app, .deb, etc.)
+  executableInfo?: {
+    format: string // PE, ELF, Mach-O, etc.
+    architecture: string
+    subsystem: string
+    dependencies: string[]
+    digitalSignature?: {
+      isSigned: boolean
+      issuer?: string
+      validFrom?: Date
+      validTo?: Date
+    }
+  }
+}
+
+export interface ArchiveEntry {
+  path: string
+  size: number
+  compressedSize: number
+  isDirectory: boolean
+  modificationTime?: Date
+}
+
+export interface DependencyAnalysis {
+  runtimeDependencies: Dependency[]
+  buildDependencies: Dependency[]
+  systemRequirements: SystemRequirement[]
+  // TODO: AI-powered dependency insights
+  aiAnalysis?: {
+    vulnerableDependencies: string[]
+    outdatedDependencies: string[]
+    recommendedUpdates: DependencyUpdate[]
+    riskScore: number
+  }
+}
+
+export interface Dependency {
+  name: string
+  version: string
+  type: 'runtime' | 'build' | 'system'
+  source?: string
+  license?: string
+  vulnerabilities?: Vulnerability[]
+}
+
+export interface SystemRequirement {
+  type: 'os' | 'runtime' | 'hardware'
+  name: string
+  version?: string
+  optional: boolean
+}
+
+export interface Vulnerability {
+  id: string // CVE ID or similar
+  severity: 'critical' | 'high' | 'medium' | 'low'
+  description: string
+  fixedIn?: string
+  publishedDate: Date
+}
+
+export interface DependencyUpdate {
+  dependency: string
+  currentVersion: string
+  recommendedVersion: string
+  reason: string
+  breaking: boolean
+}
+
+export interface ComplianceCheck {
+  licenseCompliance: {
+    detected: string[]
+    conflicts: string[]
+    recommendations: string[]
+  }
+  securityStandards: {
+    [standard: string]: {
+      compliant: boolean
+      issues: string[]
+      score: number
+    }
+  }
+  // TODO: AI-powered compliance analysis
+  aiCompliance?: {
+    riskLevel: 'low' | 'medium' | 'high'
+    regulatoryIssues: string[]
+    recommendedActions: string[]
+  }
+}
+
+// === UPLOAD WORKFLOW ===
+export interface UploadSession {
+  sessionId: string
+  appName: string
+  version: string
+  platform: Platform | string
+  status: 'uploading' | 'analyzing' | 'validating' | 'complete' | 'failed'
+  progress: number // 0-100
+  startTime: Date
+  completionTime?: Date
+  error?: string
+  // Analysis results (populated as they complete)
+  analysis?: Partial<PackageAnalysisResult>
+  // TODO: AI-powered upload optimization
+  aiOptimization?: {
+    uploadStrategy: string
+    compressionRecommendation: string
+    estimatedProcessingTime: number
+  }
+}

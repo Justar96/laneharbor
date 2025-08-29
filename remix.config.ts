@@ -1,15 +1,16 @@
-import path from "path";
-
 export default {
-  // Server-side render by default, disable SPA mode
+  // Server-side render by default
   ssr: true,
   // Build outputs
   buildDirectory: "build",
-  // Path aliases
+  // Server module format
   serverModuleFormat: "esm",
+  // Bundle all dependencies for server
   serverDependenciesToBundle: [/.*/],
-  // Add path alias
-  alias: {
-    "~": path.resolve(__dirname, "./app"),
+  // Future flags for compatibility
+  future: {
+    v3_fetcherPersist: true,
+    v3_relativeSplatPath: true,
+    v3_throwAbortReason: true,
   },
 };
