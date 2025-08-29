@@ -15,7 +15,7 @@ app.use('*', timeout(30000))
 
 // CORS middleware with secure defaults
 app.use('*', cors({
-  origin: '*', // Allow all origins for Railway deployment
+  origin: env.LH_FRONTEND_ORIGIN || '*', // Restrict to frontend origin in production
   allowMethods: ['GET', 'POST', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization', 'Range', 'If-None-Match', 'If-Modified-Since'],
   exposeHeaders: ['Content-Range', 'Accept-Ranges', 'Content-Length', 'X-File-SHA256'],
@@ -106,15 +106,31 @@ app.get('/healthz', async (c: Context) => {
   }
 })
 
-// Register API routes first
-registerRoutes(app)
+// Support HEAD health checks (some platforms use HEAD)
+app.on('HEAD', '/healthz', (c: Context) => {
+  return c.text('', 200)
+})
 
-// Legacy static frontend (served from ./public at /ui)
-app.get('/ui', serveStatic({ path: './public/index.html' }))
-app.use('/ui/assets/*', serveStatic({ root: './public' }))
+// Register API routes (conditionally enabled)
+if (env.LH_ENABLE_API) {
+  registerRoutes(app)
+  console.log('API routes enabled')
+} else {
+  console.log('API routes disabled')
+}
 
-// Serve Remix client assets
-app.use('/assets/*', serveStatic({ root: './build/client' }))
+// Frontend assets and SSR (conditionally enabled)
+if (env.LH_ENABLE_FRONTEND_SSR) {
+  // Legacy static frontend (served from ./public at /ui)
+  app.get('/ui', serveStatic({ path: './public/index.html' }))
+  app.use('/ui/assets/*', serveStatic({ root: './public' }))
+
+  // Serve Remix client assets
+  app.use('/assets/*', serveStatic({ root: './build/client' }))
+  console.log('Frontend SSR enabled')
+} else {
+  console.log('Frontend SSR disabled')
+}
 
 // Mount Remix SSR middleware for all other routes
 let build: any;
@@ -125,20 +141,40 @@ try {
   build = null;
 }
 
-if (build && build.default) {
-  const remixHandler = createRequestHandler(build.default);
+const serverBuild: any = (build && build.default) ? build.default : build;
+
+if (env.LH_ENABLE_FRONTEND_SSR && serverBuild) {
+  const remixHandler = createRequestHandler(serverBuild, process.env.NODE_ENV);
 
   app.use('*', async (c: Context) => {
     try {
-      const response = await remixHandler(c.req.raw);
+      // Respect proxy headers from Railway to avoid protocol/host mismatch redirects
+      const forwardedProto = c.req.header('x-forwarded-proto') ?? 'http';
+      const forwardedHost = c.req.header('x-forwarded-host') ?? c.req.header('host') ?? 'localhost';
+
+      const originalUrl = new URL(c.req.url);
+      const correctedUrl = new URL(originalUrl.pathname + originalUrl.search, `${forwardedProto}://${forwardedHost}`);
+
+      // Rebuild request with corrected URL and forwarded headers
+      const headers = new Headers(c.req.raw.headers);
+      headers.set('X-Forwarded-Proto', forwardedProto);
+      headers.set('X-Forwarded-Host', forwardedHost);
+
+      const req = new Request(correctedUrl.toString(), {
+        method: c.req.method,
+        headers,
+        body: ['GET', 'HEAD'].includes(c.req.method) ? undefined : c.req.raw.body,
+      });
+
+      const response = await remixHandler(req);
       return response;
     } catch (error) {
       console.error('Remix handler error:', error);
       return c.text('Internal Server Error', 500);
     }
   });
-} else {
-  // Fallback when Remix build doesn't exist
+} else if (env.LH_ENABLE_FRONTEND_SSR) {
+  // Fallback when Remix build doesn't exist but SSR is enabled
   app.get('/', (c: Context) => {
     return c.html(`
       <!DOCTYPE html>
@@ -157,9 +193,10 @@ if (build && build.default) {
         </head>
         <body>
           <div class="container">
-            <h1>🚢 LaneHarbor</h1>
-            <p>Application is starting up...</p>
-            <p><a href="/ui">Legacy UI</a> | <a href="/v1/apps">API</a> | <a href="/healthz">Health</a></p>
+            <h1>🚢 LaneHarbor Frontend</h1>
+            <p>Frontend service is starting up...</p>
+            <p>Remix build not found. Run <code>bun run build</code> first.</p>
+            <p><a href="/ui">Legacy UI</a> | <a href="/healthz">Health</a></p>
           </div>
         </body>
       </html>
@@ -167,7 +204,29 @@ if (build && build.default) {
   });
   
   app.get('*', (c: Context) => {
-    return c.redirect('/');
+    return c.text('Not Found', 404);
+  });
+} else if (env.LH_ENABLE_API) {
+  // API-only service fallback
+  app.get('/', (c: Context) => {
+    return c.json({
+      service: 'LaneHarbor API',
+      version: '1.0.0',
+      endpoints: {
+        apps: '/v1/apps',
+        health: '/healthz',
+        websocket: '/ws'
+      }
+    });
+  });
+  
+  app.get('*', (c: Context) => {
+    return c.json({ error: 'Not Found' }, 404);
+  });
+} else {
+  // Both services disabled - should not happen in production
+  app.get('*', (c: Context) => {
+    return c.json({ error: 'Service not configured' }, 503);
   });
 }
 

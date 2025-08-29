@@ -45,7 +45,8 @@ export const meta: MetaFunction = () => {
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
-  const baseUrl = `${url.protocol}//${url.host}`;
+  // Use LH_BASE_URL for API calls if available, otherwise use current host
+  const apiBaseUrl = process.env.LH_BASE_URL || `${url.protocol}//${url.host}`;
   
   // Extract URL parameters for configuration
   const searchParams = url.searchParams;
@@ -61,11 +62,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
   };
   
   try {
-    const response = await fetch(`${baseUrl}/v1/apps`);
+    const response = await fetch(`${apiBaseUrl}/v1/apps`);
     const data = await response.json();
-    return json({ apps: data.apps || [], baseUrl, urlConfig, error: null });
+    return json({ apps: data.apps || [], baseUrl: apiBaseUrl, urlConfig, error: null });
   } catch (error) {
-    return json({ apps: [], baseUrl, urlConfig, error: "Failed to fetch apps" });
+    return json({ apps: [], baseUrl: apiBaseUrl, urlConfig, error: "Failed to fetch apps" });
   }
 }
 

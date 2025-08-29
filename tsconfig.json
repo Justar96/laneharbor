@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "lib": ["ESNext"],
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "target": "ESNext",
     "module": "Preserve",
     "moduleDetection": "force",
@@ -9,6 +9,7 @@
     "verbatimModuleSyntax": true,
     "strict": true,
     "noEmit": true,
+    "skipLibCheck": true,
     "types": ["bun", "node"],
     "baseUrl": "."
   },
