@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "types": ["node", "@remix-run/node", "@remix-run/react"],
+    "noEmit": true,
+    "allowImportingTsExtensions": true
+  },
+  "include": ["app", "remix.env.d.ts", "server.*", "vite.*", "remix.*"]
+}

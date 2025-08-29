@@ -1,10 +1,10 @@
 import type { Hono } from 'hono'
 import type { Context } from 'hono'
-import { getAppsList, readAppIndex, pickLatestRelease, findReleaseByVersion, getAppDir, logDownloadMetric, getAppInsights, getGlobalAnalytics, shouldUserGetRelease, createUploadSession, updateUploadSession, getUploadSession, analyzePackage, savePackageAnalysis, getPackageAnalysis } from './storage'
-import type { DownloadMetric, UploadSession, PackageAnalysisResult } from './types'
+import { getAppsList, readAppIndex, pickLatestRelease, findReleaseByVersion, getAppDir, logDownloadMetric, getAppInsights, getGlobalAnalytics, shouldUserGetRelease, createUploadSession, updateUploadSession, getUploadSession, analyzePackage, savePackageAnalysis, getPackageAnalysis } from './storage.js'
+import type { DownloadMetric, UploadSession, PackageAnalysisResult } from './types.js'
 import { join } from 'node:path'
 import semver from 'semver'
-import { env } from './config'
+import { env } from './config.js'
 
 export function registerRoutes(app: Hono) {
   // === CORE DISTRIBUTION ENDPOINTS ===

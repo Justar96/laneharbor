@@ -1,7 +1,7 @@
 import { readdir, readFile, writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { env } from './config'
-import type { AppIndex, ReleaseEntry, DownloadMetric, AppInsights, GlobalAnalytics, SecurityCheck, ReleaseProvenance, RolloutConfig, DeploymentMetrics, PackageAnalysisResult, PackageMetadata, PackageStructure, DependencyAnalysis, ComplianceCheck, UploadSession } from './types'
+import { env } from './config.js'
+import type { AppIndex, ReleaseEntry, DownloadMetric, AppInsights, GlobalAnalytics, SecurityCheck, ReleaseProvenance, RolloutConfig, DeploymentMetrics, PackageAnalysisResult, PackageMetadata, PackageStructure, DependencyAnalysis, ComplianceCheck, UploadSession } from './types.js'
 import semver from 'semver'
 
 export function getDataDir() {
