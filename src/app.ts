@@ -119,41 +119,55 @@ app.use('/assets/*', serveStatic({ root: './build/client' }))
 // Mount Remix SSR middleware for all other routes
 let build: any;
 try {
-  // In development, we'll need to handle the case where build doesn't exist yet
+  // Try to import the built Remix server
   build = await import('../build/server/index.js' as any).catch(() => null);
 } catch {
   build = null;
 }
 
-if (build) {
-  const remixHandler = createRequestHandler(build);
+if (build && build.default) {
+  const remixHandler = createRequestHandler(build.default);
 
   app.use('*', async (c: Context) => {
-    const response = await remixHandler(c.req.raw);
-    return response;
+    try {
+      const response = await remixHandler(c.req.raw);
+      return response;
+    } catch (error) {
+      console.error('Remix handler error:', error);
+      return c.text('Internal Server Error', 500);
+    }
   });
 } else {
-  // Fallback for development when Remix build doesn't exist yet
-  app.get('*', (c: Context) => {
+  // Fallback when Remix build doesn't exist
+  app.get('/', (c: Context) => {
     return c.html(`
       <!DOCTYPE html>
       <html>
         <head>
-          <title>LaneHarbor - Building...</title>
+          <title>LaneHarbor</title>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
           <style>
-            body { font-family: system-ui, sans-serif; text-align: center; padding: 2rem; }
+            body { font-family: system-ui, sans-serif; text-align: center; padding: 2rem; background: #0f0f23; color: #cccccc; }
             .container { max-width: 600px; margin: 0 auto; }
+            h1 { color: #00cc88; }
+            a { color: #00cc88; text-decoration: none; }
+            a:hover { text-decoration: underline; }
           </style>
         </head>
         <body>
           <div class="container">
             <h1>🚢 LaneHarbor</h1>
-            <p>Remix app is building... Please run <code>npm run build</code> first.</p>
-            <p><a href="/ui">Use legacy UI</a> | <a href="/v1/apps">API</a></p>
+            <p>Application is starting up...</p>
+            <p><a href="/ui">Legacy UI</a> | <a href="/v1/apps">API</a> | <a href="/healthz">Health</a></p>
           </div>
         </body>
       </html>
     `);
+  });
+  
+  app.get('*', (c: Context) => {
+    return c.redirect('/');
   });
 }
 
