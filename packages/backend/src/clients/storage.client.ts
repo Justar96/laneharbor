@@ -7,8 +7,8 @@ import { EventEmitter } from 'node:events'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
-// Load protobuf definition (shared with storage service)
-const PROTO_PATH = join(__dirname, '..', '..', '..', 'storage', 'proto', 'storage.proto')
+// Load protobuf definition (local copy of storage service proto)
+const PROTO_PATH = join(__dirname, '..', '..', 'proto', 'storage.proto')
 
 const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
   keepCase: true,

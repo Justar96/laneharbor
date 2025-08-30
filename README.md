@@ -1,6 +1,6 @@
 # LaneHarbor
 
-Modern app distribution platform with real-time updates and gRPC microservices architecture.
+app distribution platform with real-time updates and gRPC microservices architecture.
 
 ## Architecture
 

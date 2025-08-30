@@ -62,19 +62,4 @@ yarn.lock
 pnpm-lock.yaml
 bun.lockb
 
-# Deployment configs (use package-level configs instead)
-/Dockerfile
-/nixpacks.toml
-/railway.json
-/docker-compose.yml
-/Procfile
-
-# Root-level TypeScript config (use package-level configs instead)
-/tsconfig.json
-
-# Documentation files (keep only main README.md)
-/DEPLOYMENT.md
-/PLAN.md
-/PACKAGE_ANALYSIS.md
-/*_DEPLOYMENT.md
-/MONOREPO_SETUP_COMPLETE.md
+gcs-key/

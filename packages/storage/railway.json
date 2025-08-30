@@ -1,33 +1,19 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
-    "builder": "NIXPACKS",
-    "buildCommand": "npm ci && npm run build"
+    "builder": "DOCKERFILE"
   },
   "deploy": {
     "startCommand": "npm start",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10,
-    "healthcheckPath": "/",
+    "healthcheckPath": "/health",
     "healthcheckTimeout": 300
   },
-  "envVars": {
+  "variables": {
+    "NODE_ENV": "production",
     "STORAGE_GRPC_HOST": "0.0.0.0",
-    "STORAGE_GRPC_PORT": {
-      "$env": "PORT"
-    },
-    "MINIO_ENDPOINT": {
-      "$ref": "Bucket.MINIO_PRIVATE_ENDPOINT"
-    },
-    "MINIO_PUBLIC_ENDPOINT": {
-      "$ref": "Bucket.MINIO_PUBLIC_ENDPOINT"
-    },
-    "MINIO_ROOT_USER": {
-      "$ref": "Bucket.MINIO_ROOT_USER"
-    },
-    "MINIO_ROOT_PASSWORD": {
-      "$ref": "Bucket.MINIO_ROOT_PASSWORD"
-    },
-    "MINIO_BUCKET_NAME": "laneharbor"
+    "STORAGE_GRPC_PORT": "50051",
+    "GCS_BUCKET_NAME": "laneharbor"
   }
 }

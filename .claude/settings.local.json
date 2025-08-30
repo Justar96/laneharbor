@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(C:\\Users\\nalon\\Pictures\\Screenshots/**)",
+      "WebFetch(domain:railway.com)",
+      "Bash(npm run build:*)",
+      "WebSearch",
+      "WebFetch(domain:docs.railway.com)",
+      "Bash(npm run dev:*)",
+      "Bash(curl:*)",
+      "Bash(npm run typecheck:*)",
+      "Bash(node:*)",
+      "Bash(cmd /c:*)",
+      "Bash(npm install)",
+      "Bash(PORT=8788 npm run dev)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

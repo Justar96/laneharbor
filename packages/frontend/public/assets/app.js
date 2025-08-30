@@ -1,6 +1,9 @@
 const qs = (sel) => document.querySelector(sel)
 const qsa = (sel) => Array.from(document.querySelectorAll(sel))
 
+// API base URL configuration
+const API_BASE_URL = 'https://api.justarr.com'
+
 const statusEl = qs('#status')
 const appsSelect = qs('#appsSelect')
 const reloadAppsBtn = qs('#reloadApps')
@@ -14,7 +17,9 @@ function setStatus(text, type = 'info') {
 }
 
 async function fetchJSON(url) {
-  const res = await fetch(url)
+  // Make sure URL is absolute by prepending API base URL if needed
+  const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`
+  const res = await fetch(fullUrl)
   if (!res.ok) {
     const body = await res.text().catch(() => '')
     throw new Error(`${res.status} ${res.statusText} ${body}`)

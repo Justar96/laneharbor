@@ -168,33 +168,6 @@ export class LaneHarborAPI {
       return { status: 'error', error: error.message };
     }
   }
-
-  // Analytics endpoints
-  async getAppAnalytics(appName: string, timeRange = '30d'): Promise<any> {
-    try {
-      const response = await fetch(`${this.baseUrl}/v1/apps/${encodeURIComponent(appName)}/analytics?timeRange=${timeRange}`);
-      if (!response.ok) return null;
-      return await response.json();
-    } catch (error) {
-      console.error('Failed to fetch analytics:', error);
-      return null;
-    }
-  }
-
-  async getGlobalAnalytics(timeRange = '30d', includeAI = false): Promise<any> {
-    try {
-      const url = new URL(`${this.baseUrl}/v1/analytics/dashboard`);
-      url.searchParams.set('timeRange', timeRange);
-      if (includeAI) url.searchParams.set('ai', 'true');
-      
-      const response = await fetch(url.toString());
-      if (!response.ok) return null;
-      return await response.json();
-    } catch (error) {
-      console.error('Failed to fetch global analytics:', error);
-      return null;
-    }
-  }
 }
 
 // WebSocket client for real-time updates from backend

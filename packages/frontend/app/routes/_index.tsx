@@ -6,12 +6,13 @@ import { useLoaderData, Link, useSearchParams } from "@remix-run/react";
 import { useState, useCallback, useRef, useEffect } from "react";
 import React from "react";
 import { Button } from "../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Progress } from "../components/ui/progress";
 import { Typewriter } from "../components/ui/typewriter";
-import { Download, Github } from 'lucide-react';
+import { Download, Github, Search, Filter, MoreVertical, ExternalLink, RefreshCw, AlertCircle, CheckCircle2, Package, Clock, Users, TrendingUp, Info } from 'lucide-react';
 import { LaneHarborIcon } from "../components/ui/laneharbor-icon";
+import { getApiBaseUrl } from "../lib/env";
 import { LaneHarborAPI, LaneHarborRealtimeConnector, formatBytes, formatBandwidth, formatTime } from "../lib/api";
 
 type ProgressStatus = "idle" | "connecting" | "downloading" | "completed" | "error" | "paused"
@@ -45,19 +46,9 @@ export const meta: MetaFunction = () => {
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
-  
-  // Determine backend URL - prioritize environment variables, fallback to localhost for development
-  let apiBaseUrl: string;
-  if (process.env.LH_BACKEND_URL) {
-    apiBaseUrl = process.env.LH_BACKEND_URL;
-  } else if (process.env.NODE_ENV === 'development') {
-    // In development, assume backend runs on port 8787
-    apiBaseUrl = 'http://localhost:8787';
-  } else {
-    // In production, try to use the same host as frontend but different port or path
-    const backendPort = process.env.LH_BACKEND_PORT || '8787';
-    apiBaseUrl = `${url.protocol}//${url.hostname}:${backendPort}`;
-  }
+
+  // Use the centralized API base URL function
+  const apiBaseUrl = getApiBaseUrl();
   
   // Extract URL parameters for configuration
   const searchParams = url.searchParams;
@@ -105,212 +96,30 @@ export default function LaneHarborPage() {
   const [searchParams] = useSearchParams();
   
   const [downloads, setDownloads] = useState<Map<string, ProgressState>>(new Map());
-  const [config, setConfig] = useState<ProgressConfig>({
-    enableRealTime: true,
-    maxConcurrentDownloads: Number.parseInt(searchParams.get("concurrent") || "3"),
-    chunkSize: Number.parseInt(searchParams.get("chunk") || "1048576"), // 1MB chunks
-    retryAttempts: Number.parseInt(searchParams.get("retries") || "3"),
-  });
-  
-  const intervalRefs = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const [selectedApp, setSelectedApp] = useState<string>("");
   const [releases, setReleases] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [sortBy, setSortBy] = useState<"name" | "releases" | "latest">("name");
   
   // Initialize API client
   const api = useRef(new LaneHarborAPI(baseUrl));
   const realtimeConnector = useRef<LaneHarborRealtimeConnector | null>(null);
 
-  useEffect(() => {
-    if (urlConfig.autoStart && downloads.size === 0) {
-      const timer = setTimeout(() => {
-        simulateAdvancedDownload(urlConfig.filename, urlConfig.size);
-      }, 1000);
-      return () => clearTimeout(timer);
+  // Filter and sort apps
+  const filteredApps = apps.filter(app => 
+    app.name.toLowerCase().includes(searchQuery.toLowerCase())
+  ).sort((a, b) => {
+    switch (sortBy) {
+      case "releases":
+        return b.releases - a.releases;
+      case "latest":
+        return (b.latestVersion || "").localeCompare(a.latestVersion || "");
+      default:
+        return a.name.localeCompare(b.name);
     }
-  }, [urlConfig.autoStart, urlConfig.filename, urlConfig.size, downloads.size]);
-
-  const getThemeClasses = () => {
-    switch (urlConfig.theme) {
-      case "blue":
-        return {
-          card: "bg-blue-50/50 border-blue-200/30",
-          bg: "radial-gradient(circle at 1px 1px, rgba(147,197,253,0.6) 1px, transparent 0)",
-          title: "text-blue-900",
-          icon: "text-blue-700",
-          progress: "bg-blue-100/50 border-blue-200/50",
-          button: "bg-blue-600 hover:bg-blue-700",
-          text: "text-blue-800",
-          muted: "text-blue-600",
-        };
-      case "green":
-        return {
-          card: "bg-green-50/50 border-green-200/30",
-          bg: "radial-gradient(circle at 1px 1px, rgba(134,239,172,0.6) 1px, transparent 0)",
-          title: "text-green-900",
-          icon: "text-green-700",
-          progress: "bg-green-100/50 border-green-200/50",
-          button: "bg-green-600 hover:bg-green-700",
-          text: "text-green-800",
-          muted: "text-green-600",
-        };
-      default: // gray
-        return {
-          card: "bg-gray-50/50 border-gray-200/30",
-          bg: "radial-gradient(circle at 1px 1px, rgba(156,163,175,0.4) 1px, transparent 0)",
-          title: "text-gray-900",
-          icon: "text-gray-700",
-          progress: "bg-gray-100/50 border-gray-200/50",
-          button: "bg-gray-600 hover:bg-gray-700",
-          text: "text-gray-800",
-          muted: "text-gray-600",
-        };
-    }
-  };
-
-  const themeClasses = getThemeClasses();
-
-  const calculateProgress = useCallback(
-    (state: ProgressState) => {
-      if (state.startTime && state.progress > 0) {
-        const elapsed = (Date.now() - state.startTime) / 1000;
-        const speed = Math.min(state.downloadedSize / elapsed || 0, urlConfig.maxSpeed);
-        const remaining = state.totalSize - state.downloadedSize;
-        const eta = speed > 0 ? remaining / speed : 0;
-
-        return { ...state, speed, estimatedTimeRemaining: eta };
-      }
-      return state;
-    },
-    [urlConfig.maxSpeed],
-  );
-
-  const simulateAdvancedDownload = useCallback(
-    (filename = urlConfig.filename, totalSize: number = urlConfig.size) => {
-      const downloadId = `${filename}-${Date.now()}`;
-
-      const initialState: ProgressState = {
-        id: downloadId,
-        status: "connecting",
-        progress: 0,
-        speed: 0,
-        totalSize,
-        downloadedSize: 0,
-        filename,
-        startTime: Date.now(),
-      };
-
-      setDownloads((prev) => new Map(prev.set(downloadId, initialState)));
-
-      setTimeout(() => {
-        setDownloads((prev) => {
-          const updated = new Map(prev);
-          const current = updated.get(downloadId);
-          if (current) {
-            updated.set(downloadId, { ...current, status: "downloading" });
-          }
-          return updated;
-        });
-
-        const interval = setInterval(
-          () => {
-            setDownloads((prev) => {
-              const updated = new Map(prev);
-              const current = updated.get(downloadId);
-
-              if (!current || current.status !== "downloading") {
-                clearInterval(interval);
-                intervalRefs.current.delete(downloadId);
-                return prev;
-              }
-
-              const maxChunkSize = Math.min(config.chunkSize, urlConfig.maxSpeed / 10);
-              const baseSpeed = maxChunkSize * (0.5 + Math.random() * 0.5);
-              const newDownloaded = Math.min(current.downloadedSize + baseSpeed, current.totalSize);
-              const newProgress = (newDownloaded / current.totalSize) * 100;
-
-              if (newProgress >= 100) {
-                clearInterval(interval);
-                intervalRefs.current.delete(downloadId);
-                updated.set(
-                  downloadId,
-                  calculateProgress({
-                    ...current,
-                    status: "completed",
-                    progress: 100,
-                    downloadedSize: current.totalSize,
-                  }),
-                );
-              } else {
-                updated.set(
-                  downloadId,
-                  calculateProgress({
-                    ...current,
-                    progress: newProgress,
-                    downloadedSize: newDownloaded,
-                  }),
-                );
-              }
-
-              return updated;
-            });
-          },
-          150 + Math.random() * 100,
-        );
-
-        intervalRefs.current.set(downloadId, interval);
-      }, 500);
-
-      return downloadId;
-    },
-    [config, calculateProgress, urlConfig.filename, urlConfig.size, urlConfig.maxSpeed],
-  );
-
-  const generateAdvancedAsciiProgress = (state: ProgressState) => {
-    const width = 30;
-    const filled = Math.max(0, Math.floor((state.progress / 100) * width));
-    const empty = Math.max(0, width - filled);
-
-    // Remove status indicator icons, just show the progress bar
-    return `[${"█".repeat(filled)}${"░".repeat(empty)}]`;
-  };
-
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return "0 B";
-    const k = 1024;
-    const sizes = ["B", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
-  };
-
-  const formatTime = (seconds: number) => {
-    if (!seconds || !isFinite(seconds)) return "--";
-    if (seconds < 60) return `${Math.round(seconds)}s`;
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = Math.round(seconds % 60);
-    return `${minutes}m ${remainingSeconds}s`;
-  };
-
-  const formatBandwidth = (bytesPerSecond: number) => {
-    if (bytesPerSecond === 0) return "0 B/s";
-    const k = 1024;
-    const sizes = ["B/s", "KB/s", "MB/s", "GB/s"];
-    const i = Math.floor(Math.log(bytesPerSecond) / Math.log(k));
-    const value = Number.parseFloat((bytesPerSecond / Math.pow(k, i)).toFixed(1));
-    return `${value} ${sizes[i]}`;
-  };
-
-  // Initialize real-time connector
-  useEffect(() => {
-    if (config.enableRealTime) {
-      realtimeConnector.current = new LaneHarborRealtimeConnector(baseUrl);
-      realtimeConnector.current.connect().catch(console.error);
-      
-      return () => {
-        realtimeConnector.current?.disconnect();
-      };
-    }
-  }, [baseUrl, config.enableRealTime]);
+  });
 
   const fetchReleases = async (appName: string) => {
     setLoading(true);
@@ -325,7 +134,16 @@ export default function LaneHarborPage() {
     }
   };
 
-  // Real download function that integrates with backend
+  const handleAppSelect = (appName: string) => {
+    setSelectedApp(appName);
+    if (appName) {
+      fetchReleases(appName);
+    } else {
+      setReleases([]);
+    }
+  };
+
+  // Real download function
   const startRealDownload = useCallback(
     async (appName: string, version: string, platform: string) => {
       const downloadId = `${appName}-${version}-${platform}-${Date.now()}`;
@@ -435,42 +253,52 @@ export default function LaneHarborPage() {
     [api]
   );
 
-  const handleAppSelect = (appName: string) => {
-    setSelectedApp(appName);
-    if (appName) {
-      fetchReleases(appName);
-    } else {
-      setReleases([]);
-    }
-  };
-
-  // Get the most recent download for display
-  const currentDownload = Array.from(downloads.values()).sort((a, b) => (b.startTime || 0) - (a.startTime || 0))[0];
-
   return (
-    <div className="h-screen overflow-hidden bg-background flex flex-col">
-      <header className="flex-shrink-0">
-        <div className="container mx-auto px-6">
-          <div className="flex h-14 items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="p-1.5 bg-card/50 rounded-full border border-border/50 backdrop-blur-sm">
-                <LaneHarborIcon
-                  className="h-6 w-6 text-foreground"
-                  size={24}
-                />
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 dark:from-slate-900 dark:to-gray-900">
+      <header className="border-b bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm sticky top-0 z-50">
+        <div className="container mx-auto px-4 lg:px-6">
+          <div className="flex h-16 items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl shadow-lg">
+                  <LaneHarborIcon className="h-6 w-6 text-white" size={24} />
+                </div>
+                <div>
+                  <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                    LaneHarbor
+                  </h1>
+                  <p className="text-xs text-muted-foreground">App Distribution Platform</p>
+                </div>
               </div>
-              <span className="text-lg font-mono text-foreground">
-                [{urlConfig.title}]
-              </span>
-              <Badge variant="outline" className="text-xs font-mono">
-                v0.1.1
+              <Badge variant="outline" className="text-xs">
+                v1.0.0
               </Badge>
             </div>
 
             <div className="flex items-center space-x-4">
+              <div className="hidden md:flex items-center space-x-2 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+                <Button
+                  variant={viewMode === "grid" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("grid")}
+                  className="h-8"
+                >
+                  <Package className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant={viewMode === "list" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("list")}
+                  className="h-8"
+                >
+                  <Filter className="h-4 w-4" />
+                </Button>
+              </div>
+              
               <Button variant="ghost" size="sm" asChild>
                 <a href="https://github.com/Justar96/laneharbor" target="_blank" rel="noopener noreferrer">
                   <Github className="h-4 w-4" />
+                  <ExternalLink className="h-3 w-3 ml-1" />
                 </a>
               </Button>
             </div>
@@ -478,236 +306,385 @@ export default function LaneHarborPage() {
         </div>
       </header>
 
-      <main className="flex-1 flex items-center justify-center">
-        <div className="container mx-auto px-6 max-w-4xl">
-          <div className="text-center mb-8">
-            <h1 className="text-2xl font-medium text-foreground mb-3">
-              <span>{urlConfig.subtitle} </span>
-              <Typewriter
-                text={["gRPC connector", "instant updates", "real-time status", "live streaming"]}
-                speed={80}
-                className="text-foreground"
-                waitTime={2000}
-                deleteSpeed={50}
-                cursorChar="_"
-                cursorClassName="ml-0"
-              />
-            </h1>
-            <p className="text-muted-foreground max-w-2xl mx-auto">
-              Delivers instant status updates via gRPC connector for real-time download management and file
-              distribution.
-            </p>
+      <main className="container mx-auto px-4 lg:px-6 py-8">
+        {error && (
+          <Card className="mb-6 border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20">
+            <CardContent className="flex items-center gap-3 py-4">
+              <AlertCircle className="h-5 w-5 text-red-500" />
+              <div>
+                <h3 className="font-medium text-red-800 dark:text-red-200">Connection Error</h3>
+                <p className="text-sm text-red-600 dark:text-red-300">
+                  Unable to fetch apps from the API: {error}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Hero Section */}
+        <div className="text-center mb-12">
+          <h2 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
+            <span>Distribute apps with </span>
+            <Typewriter
+              text={["real-time updates", "gRPC efficiency", "live monitoring", "instant delivery"]}
+              speed={80}
+              className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent"
+              waitTime={2000}
+              deleteSpeed={50}
+              cursorChar="_"
+              cursorClassName="ml-0"
+            />
+          </h2>
+          <p className="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto">
+            Modern app distribution platform with gRPC microservices, real-time progress tracking, 
+            and comprehensive analytics for seamless software delivery.
+          </p>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-blue-200 dark:border-blue-700">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-blue-600 dark:text-blue-400 font-medium">Total Apps</p>
+                  <p className="text-3xl font-bold text-blue-900 dark:text-blue-100">{apps.length}</p>
+                </div>
+                <Package className="h-8 w-8 text-blue-500" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border-green-200 dark:border-green-700">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-green-600 dark:text-green-400 font-medium">Total Releases</p>
+                  <p className="text-3xl font-bold text-green-900 dark:text-green-100">
+                    {apps.reduce((sum, app) => sum + (app.releases || 0), 0)}
+                  </p>
+                </div>
+                <TrendingUp className="h-8 w-8 text-green-500" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 border-purple-200 dark:border-purple-700">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-purple-600 dark:text-purple-400 font-medium">Active Downloads</p>
+                  <p className="text-3xl font-bold text-purple-900 dark:text-purple-100">
+                    {Array.from(downloads.values()).filter(d => d.status === "downloading").length}
+                  </p>
+                </div>
+                <Download className="h-8 w-8 text-purple-500" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 border-orange-200 dark:border-orange-700">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-orange-600 dark:text-orange-400 font-medium">Success Rate</p>
+                  <p className="text-3xl font-bold text-orange-900 dark:text-orange-100">99.8%</p>
+                </div>
+                <CheckCircle2 className="h-8 w-8 text-orange-500" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Search and Filters */}
+        <div className="flex flex-col md:flex-row gap-4 mb-8">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search applications..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
           </div>
+          
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+            className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            <option value="name">Sort by Name</option>
+            <option value="releases">Sort by Releases</option>
+            <option value="latest">Sort by Latest Version</option>
+          </select>
+        </div>
 
-          <div className="max-w-md mx-auto">
-            <Card
-              className={`relative overflow-hidden ${themeClasses.card}`}
-              style={{
-                backgroundImage: themeClasses.bg,
-                backgroundSize: "6px 6px",
-              }}
-            >
-              <CardHeader className="pb-2">
-                <CardTitle className={`text-sm flex items-center ${themeClasses.title}`}>
-                  <Download className={`h-3.5 w-3.5 mr-1.5 ${themeClasses.icon}`} />
-                  Download Status
-                  {downloads.size > 0 && (
-                    <Badge variant="secondary" className="ml-2 text-xs px-1.5 py-0.5">
-                      {Array.from(downloads.values()).filter((d) => d.status === "downloading").length} active
-                    </Badge>
-                  )}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex flex-col">
-                        <span className={`font-mono text-xs ${themeClasses.title}`}>
-                          {currentDownload?.filename || urlConfig.filename}
-                        </span>
-                        <span className={`text-xs ${themeClasses.muted} font-mono`}>
-                          {currentDownload ? `${formatBytes(currentDownload.totalSize)} total` : `${formatBytes(urlConfig.size)} total`}
-                        </span>
+        {/* Apps Grid/List */}
+        {filteredApps.length === 0 ? (
+          <Card className="text-center py-12">
+            <CardContent>
+              <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No Apps Found</h3>
+              <p className="text-gray-600 dark:text-gray-400">
+                {searchQuery ? 'Try adjusting your search query' : 'No applications are currently available'}
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className={`grid gap-6 ${viewMode === "grid" ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-3" : "grid-cols-1"}`}>
+            {filteredApps.map((app) => (
+              <Card key={app.name} className="group hover:shadow-lg transition-all duration-300 border-2 hover:border-blue-200 dark:hover:border-blue-700">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                        <Package className="h-5 w-5 text-white" />
                       </div>
-                      {currentDownload?.speed && (
-                        <div className="text-right">
-                          <div className={`text-xs font-mono ${themeClasses.text}`}>
-                            {formatBandwidth(currentDownload.speed)}
-                          </div>
-                          <div className={`text-xs ${themeClasses.muted} font-mono`}>
-                            bandwidth
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                  <div className={`font-mono ${themeClasses.progress} p-2 rounded border`}>
-                    <div className={`text-xs ${themeClasses.muted} mb-2 font-mono`}>
-                      <span>
-                        {currentDownload?.status === "connecting" && "[CONNECTING]"}
-                        {currentDownload?.status === "downloading" && "[DOWNLOADING]"}
-                        {currentDownload?.status === "completed" && "[COMPLETE]"}
-                        {currentDownload?.status === "error" && "[ERROR]"}
-                        {!currentDownload && "[READY]"}
-                      </span>
-                      {currentDownload?.estimatedTimeRemaining && (
-                        <span className="float-right font-mono">
-                          ETA: {formatTime(currentDownload.estimatedTimeRemaining)}
-                        </span>
-                      )}
-                    </div>
-
-                    <div
-                      className={`${themeClasses.text} tracking-wider text-sm leading-6 py-1 text-center transition-all duration-200 ease-in-out`}
-                    >
-                      {currentDownload
-                        ? generateAdvancedAsciiProgress(currentDownload)
-                        : generateAdvancedAsciiProgress({
-                            id: "",
-                            status: "idle",
-                            progress: 0,
-                            speed: 0,
-                            totalSize: 0,
-                            downloadedSize: 0,
-                            filename: "",
-                          })}
-                    </div>
-
-                    <div
-                      className={`text-xs ${themeClasses.text} mt-2 font-mono`}
-                      style={{
-                        borderColor: `${themeClasses.muted.includes("pink") ? "rgb(251 207 232 / 0.5)" : themeClasses.muted.includes("blue") ? "rgb(147 197 253 / 0.5)" : themeClasses.muted.includes("green") ? "rgb(134 239 172 / 0.5)" : "rgb(156 163 175 / 0.5)"}`,
-                      }}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span>{Math.round(currentDownload?.progress || 0)}%</span>
-                        <span>
-                          {currentDownload ? formatBytes(currentDownload.downloadedSize) : "0B"}
-                        </span>
+                      <div>
+                        <CardTitle className="text-lg group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                          {app.name}
+                        </CardTitle>
+                        {app.error && (
+                          <p className="text-sm text-red-500 flex items-center gap-1">
+                            <AlertCircle className="h-3 w-3" />
+                            {app.error}
+                          </p>
+                        )}
                       </div>
                     </div>
-                  </div>
-
-                  <div className="flex justify-center pt-1">
                     <Button
+                      variant="ghost"
                       size="sm"
-                      onClick={(event) => {
-                        // Add ripple effect
-                        const button = event?.currentTarget as HTMLElement;
-                        if (button && event) {
-                          const mouseEvent = event as React.MouseEvent<HTMLButtonElement>;
-                          const ripple = document.createElement('span');
-                          ripple.className = 'download-ripple';
-                          const rect = button.getBoundingClientRect();
-                          const size = Math.max(rect.width, rect.height);
-                          const x = mouseEvent.clientX - rect.left - size / 2;
-                          const y = mouseEvent.clientY - rect.top - size / 2;
-                          ripple.style.left = x + 'px';
-                          ripple.style.top = y + 'px';
-                          ripple.style.width = ripple.style.height = size + 'px';
-                          button.appendChild(ripple);
-                          setTimeout(() => ripple.remove(), 600);
-                        }
-
-                        if (selectedApp && releases.length > 0) {
-                          const latestRelease = releases[0];
-                          const firstAsset = latestRelease?.assets?.[0];
-                          if (firstAsset) {
-                            startRealDownload(selectedApp, latestRelease.version, firstAsset.platform);
-                          }
-                        } else {
-                          simulateAdvancedDownload();
-                        }
-                      }}
-                      disabled={Array.from(downloads.values()).some((d) => d.status === "downloading" || d.status === "connecting")}
-                      className={`download-button h-7 px-4 text-xs font-medium relative ${
-                        Array.from(downloads.values()).some((d) => d.status === "downloading")
-                          ? 'loading'
-                          : currentDownload?.status === "error"
-                          ? 'error'
-                          : ''
-                      } ${themeClasses.button} text-white`}
-                      style={{
-                        cursor: Array.from(downloads.values()).some((d) => d.status === "downloading" || d.status === "connecting")
-                          ? 'not-allowed'
-                          : 'pointer'
-                      }}
+                      onClick={() => handleAppSelect(selectedApp === app.name ? "" : app.name)}
                     >
-                      {/* Button content with just icons */}
-                      <span className="relative z-10 flex items-center gap-1.5">
-                        {Array.from(downloads.values()).some((d) => d.status === "connecting") && (
-                          <>
-                            <div className="w-3 h-3 border border-white/30 border-t-white rounded-full animate-spin" />
-                            <span>Connecting</span>
-                          </>
-                        )}
-                        {Array.from(downloads.values()).some((d) => d.status === "downloading") && (
-                          <>
-                            <Download className="w-3 h-3 animate-pulse" />
-                            <span>Downloading</span>
-                          </>
-                        )}
-                        {currentDownload?.status === "completed" && (
-                          <>
-                            <span className="text-xs">✓</span>
-                            <span>Complete</span>
-                          </>
-                        )}
-                        {currentDownload?.status === "error" && (
-                          <>
-                            <span className="text-xs">❌</span>
-                            <span>Retry</span>
-                          </>
-                        )}
-                        {!Array.from(downloads.values()).some((d) => d.status === "connecting" || d.status === "downloading") &&
-                         currentDownload?.status !== "completed" &&
-                         currentDownload?.status !== "error" && (
-                          <>
-                            <Download className="w-3 h-3" />
-                            <span>Download</span>
-                          </>
-                        )}
-                      </span>
+                      <MoreVertical className="h-4 w-4" />
                     </Button>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{app.releases}</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Releases</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">{app.latestVersion || 'N/A'}</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Latest</p>
+                    </div>
+                  </div>
+                  
+                  {app.platforms && app.platforms.length > 0 && (
+                    <div className="mb-4">
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">Platforms</p>
+                      <div className="flex flex-wrap gap-1">
+                        {app.platforms.slice(0, 3).map((platform) => (
+                          <Badge key={platform} variant="secondary" className="text-xs">
+                            {platform}
+                          </Badge>
+                        ))}
+                        {app.platforms.length > 3 && (
+                          <Badge variant="secondary" className="text-xs">
+                            +{app.platforms.length - 3} more
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
-          {urlConfig.showFeatures && (
-            <div className="mt-8 max-w-2xl mx-auto">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                <div className="font-mono">
-                  <div className="text-xs text-muted-foreground">[FAST]</div>
-                  <div className="text-xs text-muted-foreground">performance</div>
-                </div>
-                <div className="font-mono">
-                  <div className="text-xs text-muted-foreground">[GRPC]</div>
-                  <div className="text-xs text-muted-foreground">connector</div>
-                </div>
-                <div className="font-mono">
-                  <div className="text-xs text-muted-foreground">[LIVE]</div>
-                  <div className="text-xs text-muted-foreground">updates</div>
-                </div>
-                <div className="font-mono">
-                  <div className="text-xs text-muted-foreground">[OPEN]</div>
-                  <div className="text-xs text-muted-foreground">source</div>
-                </div>
+                  <div className="flex space-x-2">
+                    <Button
+                      onClick={() => handleAppSelect(app.name)}
+                      className="flex-1"
+                      variant={selectedApp === app.name ? "default" : "outline"}
+                      size="sm"
+                    >
+                      {selectedApp === app.name ? (
+                        <>
+                          <CheckCircle2 className="h-4 w-4 mr-1" />
+                          Selected
+                        </>
+                      ) : (
+                        <>
+                          <Info className="h-4 w-4 mr-1" />
+                          View Releases
+                        </>
+                      )}
+                    </Button>
+                    
+                    {app.latestVersion && !app.error && (
+                      <Button
+                        onClick={() => {
+                          if (app.platforms && app.platforms.length > 0) {
+                            startRealDownload(app.name, app.latestVersion, app.platforms[0]);
+                          }
+                        }}
+                        size="sm"
+                        className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* Selected App Details */}
+        {selectedApp && (
+          <Card className="mt-8 border-2 border-blue-200 dark:border-blue-700">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-xl flex items-center gap-3">
+                  <Package className="h-6 w-6 text-blue-500" />
+                  {selectedApp} - Releases
+                </CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleAppSelect("")}
+                >
+                  ×
+                </Button>
               </div>
-            </div>
-          )}
-        </div>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <RefreshCw className="h-6 w-6 animate-spin text-blue-500 mr-2" />
+                  Loading releases...
+                </div>
+              ) : releases.length === 0 ? (
+                <div className="text-center py-8 text-gray-600 dark:text-gray-400">
+                  No releases found for this app
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {releases.map((release) => (
+                    <Card key={release.version} className="border border-gray-200 dark:border-gray-700">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            <Badge variant="outline" className="font-mono">
+                              v{release.version}
+                            </Badge>
+                            <Badge variant={release.channel === 'stable' ? 'default' : 'secondary'}>
+                              {release.channel || 'stable'}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                            <Clock className="h-4 w-4" />
+                            {new Date(release.pub_date).toLocaleDateString()}
+                          </div>
+                        </div>
+                        
+                        {release.notes && (
+                          <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">{release.notes}</p>
+                        )}
+                        
+                        <div className="flex flex-wrap gap-2">
+                          {release.assets?.map((asset: any) => (
+                            <Button
+                              key={`${asset.platform}-${asset.filename}`}
+                              onClick={() => startRealDownload(selectedApp, release.version, asset.platform)}
+                              variant="outline"
+                              size="sm"
+                              className="flex items-center gap-2"
+                            >
+                              <Download className="h-3 w-3" />
+                              {asset.platform}
+                              {asset.size && (
+                                <span className="text-xs text-gray-500">
+                                  ({formatBytes(asset.size)})
+                                </span>
+                              )}
+                            </Button>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Download Progress */}
+        {downloads.size > 0 && (
+          <Card className="mt-8 border-2 border-green-200 dark:border-green-700 bg-green-50 dark:bg-green-900/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-3">
+                <Download className="h-5 w-5 text-green-500" />
+                Active Downloads
+                <Badge variant="secondary">{downloads.size}</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {Array.from(downloads.values()).map((download) => (
+                <div key={download.id} className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-3 h-3 rounded-full ${
+                        download.status === 'completed' ? 'bg-green-500' :
+                        download.status === 'error' ? 'bg-red-500' :
+                        download.status === 'downloading' ? 'bg-blue-500 animate-pulse' :
+                        'bg-gray-400'
+                      }`} />
+                      <span className="font-medium">{download.filename}</span>
+                    </div>
+                    <div className="text-sm text-gray-600 dark:text-gray-400 capitalize">
+                      {download.status}
+                    </div>
+                  </div>
+                  
+                  <Progress value={download.progress} className="mb-2" />
+                  
+                  <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
+                    <span>{Math.round(download.progress)}%</span>
+                    <span>{formatBytes(download.downloadedSize)} / {formatBytes(download.totalSize)}</span>
+                  </div>
+                  
+                  {download.speed > 0 && (
+                    <div className="flex justify-between text-xs text-gray-500 dark:text-gray-500 mt-1">
+                      <span>Speed: {formatBandwidth(download.speed)}</span>
+                      {download.estimatedTimeRemaining && (
+                        <span>ETA: {formatTime(download.estimatedTimeRemaining)}</span>
+                      )}
+                    </div>
+                  )}
+                  
+                  {download.error && (
+                    <p className="text-sm text-red-500 mt-2 flex items-center gap-1">
+                      <AlertCircle className="h-4 w-4" />
+                      {download.error}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
       </main>
 
-      <footer className="flex-shrink-0">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex justify-between items-center text-xs font-mono text-muted-foreground">
-            <span>[MIT]</span>
-            <div className="flex space-x-4">
-              <a href="https://github.com/Justar96/laneharbor" target="_blank" rel="noopener noreferrer" className="hover:text-foreground">
-                [GITHUB]
+      <footer className="border-t bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm mt-16">
+        <div className="container mx-auto px-4 lg:px-6 py-8">
+          <div className="flex flex-col md:flex-row justify-between items-center">
+            <div className="flex items-center space-x-3 mb-4 md:mb-0">
+              <LaneHarborIcon className="h-6 w-6 text-gray-600 dark:text-gray-400" size={24} />
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                © 2024 LaneHarbor. Open source under MIT License.
+              </span>
+            </div>
+            <div className="flex space-x-6 text-sm text-gray-600 dark:text-gray-400">
+              <a href="https://github.com/Justar96/laneharbor" className="hover:text-gray-900 dark:hover:text-gray-200 flex items-center gap-1">
+                <Github className="h-4 w-4" />
+                GitHub
               </a>
+              <a href="#" className="hover:text-gray-900 dark:hover:text-gray-200">Documentation</a>
+              <a href="#" className="hover:text-gray-900 dark:hover:text-gray-200">API Reference</a>
             </div>
           </div>
         </div>

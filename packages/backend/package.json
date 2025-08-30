@@ -9,16 +9,23 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "tsx watch --clear-screen=false src/index.ts",
+    "dev": "tsx watch --clear-screen=false src/index.express.ts",
+    "dev:hono": "tsx watch --clear-screen=false src/index.ts",
     "build": "rimraf dist && tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit"
+    "start:minimal": "node minimal-server.js",
+    "typecheck": "tsc --noEmit",
+    "test:health": "node test-health.js",
+    "test:health:simple": "node simple-health-test.js",
+    "test:health:dev": "npm run dev & sleep 3 && npm run test:health; kill %1"
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.13.4",
     "@grpc/proto-loader": "^0.8.0",
     "@hono/node-server": "^1.14.0",
     "@types/ws": "^8.18.1",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
     "hono": "^4.9.5",
     "protobufjs": "^7.5.4",
     "protobufjs-cli": "^1.1.3",
@@ -26,6 +33,8 @@
     "ws": "^8.18.3"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
     "@types/node": "^24.3.0",
     "@types/semver": "^7.7.0",
     "rimraf": "^6.0.1",

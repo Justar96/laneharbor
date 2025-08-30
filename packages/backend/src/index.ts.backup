@@ -9,21 +9,79 @@ import { createServer } from 'node:http'
 
 const app = new Hono()
 
-// CRITICAL: Railway Health Check Endpoint - Simplified for reliability
-// Must return HTTP 200 from healthcheck.railway.app
+// CRITICAL: Railway Health Check Endpoint - EXACTLY per Railway docs
+// Must return HTTP 200 and accept requests from healthcheck.railway.app
 app.get('/health', (c) => {
-  // Simple logging for debugging - no complex logic
-  const host = c.req.header('host') || 'no-host'
-  console.log(`[HEALTH] Request from: ${host}`)
+  // Railway-specific hostname validation
+  const host = c.req.header('host') || ''
+  const origin = c.req.header('origin') || ''
+  const forwardedHost = c.req.header('x-forwarded-host') || ''
+  
+  // Log the health check request for debugging
+  console.log(`[${new Date().toISOString()}] Railway health check:`)
+  console.log(`  Host: ${host}`)
+  console.log(`  Origin: ${origin}`)
+  console.log(`  X-Forwarded-Host: ${forwardedHost}`)
+  console.log(`  User-Agent: ${c.req.header('user-agent')}`)
+  
+  // Railway health checks come from healthcheck.railway.app
+  // But also allow internal calls and localhost for development
+  const allowedHosts = [
+    'healthcheck.railway.app',
+    'localhost',
+    '127.0.0.1',
+    '0.0.0.0'
+  ]
+  
+  // Check if the request is from an allowed host
+  const isAllowedHost = allowedHosts.some(allowedHost => 
+    host.includes(allowedHost) || 
+    forwardedHost.includes(allowedHost) ||
+    host.startsWith('localhost:') ||
+    host.startsWith('127.0.0.1:') ||
+    host.startsWith('0.0.0.0:')
+  ) || 
+  // Railway internal requests might not have a clear host
+  host.includes('railway') ||
+  // Allow if no host header (some health checks)
+  !host
+
+  if (!isAllowedHost) {
+    console.log(`⚠️  Health check from unallowed host: ${host}`)
+  }
   
   // Railway requires exactly HTTP 200 status code
-  // Return immediately without any complex checks
-  return c.text('OK', 200)
+  // No specific response body required - keep it minimal
+  c.status(200)
+  c.header('Content-Type', 'text/plain')
+  c.header('Cache-Control', 'no-store')
+  return c.text('OK')
 })
 
 // Backup health check endpoint
 app.get('/healthz', (c) => {
-  return c.text('OK', 200)
+  console.log(`[${new Date().toISOString()}] Health check (healthz): ${c.req.method} ${c.req.url}`)
+  c.status(200)
+  c.header('Content-Type', 'text/plain')
+  c.header('Cache-Control', 'no-store')
+  return c.text('OK')
+})
+
+// Support HEAD requests for health checks
+app.on('HEAD', '/health', (c) => {
+  console.log(`[${new Date().toISOString()}] HEAD health check`)
+  c.status(200)
+  c.header('Content-Type', 'text/plain')
+  c.header('Cache-Control', 'no-store')
+  return c.text('')
+})
+
+app.on('HEAD', '/healthz', (c) => {
+  console.log(`[${new Date().toISOString()}] HEAD healthz`)
+  c.status(200)
+  c.header('Content-Type', 'text/plain')
+  c.header('Cache-Control', 'no-store')
+  return c.text('')
 })
 
 // Request timeout middleware (30 seconds) - AFTER health checks
